@@ -75,7 +75,7 @@ if __name__ == '__main__':
                         name))
                     es.index(
                         index="_".join((index, "test")),
-                        doc_type=doc['o']['site'],
+                        doc_type=doc['o']['site'].replace(".", "_"),
                         id=doc['o']['_id'],
                         body=doc["o"]
                     )
@@ -95,7 +95,7 @@ if __name__ == '__main__':
                         name))
                     es.index(
                         index="_".join((index, "test")),
-                        doc_type=cur['site'],
+                        doc_type=cur['site'].replace(".", "_"),
                         id=cur["_id"],
                         body=cur
                     )
