@@ -8,8 +8,8 @@ import yaml
 
 from elasticsearch import Elasticsearch
 from pymongo import MongoClient
-from time import time
 from pymongo.cursor import CursorType
+from time import time
 
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s : %(message)s",
@@ -28,6 +28,8 @@ def config():
     else:
         return conf
 
+VERSION = "v1"
+
 
 def connect_mongo():
     conf = config()
@@ -40,9 +42,53 @@ def connect_mongo():
     )
     return db
 
+
+def prepare(entry):
+    dbname, colname = entry["ns"].split(".")
+
+    # If an insert, set rec to inserted rec
+
+    if entry["op"] == 'i':
+        rec = entry["o"]
+
+    # If an update, set rec to retrieved rec
+    elif entry["op"] == "u":
+        query = {"_id": doc["o2"]["_id"]}
+        rec = db[dbname][colname].find(query)[0]
+    else:
+        return False
+    rec["timestamp"] = time()
+    rec["_id"] = str(rec["_id"])
+    if "parent" in rec:
+        rec["parent"] = str(rec["parent"])
+
+    return {"body": rec, "db": dbname, "col": colname}
+
+
+def get_es_values(rec):
+    if rec["db"] == "bernie":
+        name = [rec["col"], rec["body"]["lang"], VERSION]
+        rec["es_index"] = "_".join(name)
+        rec["es_type"] = rec["body"]["site"].replace(".", "_")
+    elif rec["db"] == "facebook":
+        if rec["col"] == "token":
+            return False
+        name = ["fb", rec["body"]["page"], VERSION]
+        rec["es_index"] = "_".join(name)
+        rec["es_type"] = rec["col"] if rec["col"] != "data" else "stats"
+    elif rec["db"] == "campaign":
+        name = ["campaign_events", VERSION]
+        rec["es_index"] = "_".join(name)
+        rec["es_type"] = rec["col"]
+    else:
+        return False
+    return rec
+
+
 if __name__ == '__main__':
     db = connect_mongo()
-    es = Elasticsearch("192.168.3.5")
+    conf = config()["elasticsearch"]
+    es = Elasticsearch(conf["host"])
     oplog = db.local.oplog.rs
     first = next(oplog.find().sort('$natural', pymongo.DESCENDING).limit(-1))
     ts = first['ts']
@@ -56,46 +102,23 @@ if __name__ == '__main__':
         while cursor.alive:
             for doc in cursor:
                 ts = doc['ts']
-                dbname = doc['ns'].split(".")[0]
-                if dbname != "bernie":
+                rec = prepare(doc)
+                if rec:
+                    rec = get_es_values(rec)
+                if not rec:
                     continue
-                index = doc['ns'].split(".")[-1]
-                if doc['op'] == 'i':
-                    # doc['ts'] = str(doc['ts'])
-                    doc["o"]["_id"] = str(doc["o"]["_id"])
-                    doc['o']['timestamp'] = time()
-                    try:
-                        name = doc["o"]["name"]
-                    except KeyError:
-                        name = doc["o"]["title"]
-                    msg = "Inserting {0} for {1} '{2}'"
-                    logging.info(msg.format(
-                        doc["o"]["_id"],
-                        index,
-                        name))
+                if "parent" in rec["body"]:
                     es.index(
-                        index="_".join((index, "test")),
-                        doc_type=doc['o']['site'].replace(".", "_"),
-                        id=doc['o']['_id'],
-                        body=doc["o"]
+                        index=rec["es_index"],
+                        doc_type=rec["es_type"],
+                        id=rec["body"]["_id"],
+                        parent=rec["body"]["parent"],
+                        body=rec["body"]
                     )
-                elif doc['op'] == 'u':
-                    query = {"_id": doc["o2"]["_id"]}
-                    cur = db.bernie[index].find(query)[0]
-                    cur["timestamp"] = time()
-                    cur["_id"] = str(cur["_id"])
-                    try:
-                        name = cur["name"]
-                    except KeyError:
-                        name = cur["title"]
-                    msg = "Updating {0} for {1} '{2}'"
-                    logging.info(msg.format(
-                        cur["_id"],
-                        index,
-                        name))
+                else:
                     es.index(
-                        index="_".join((index, "test")),
-                        doc_type=cur['site'].replace(".", "_"),
-                        id=cur["_id"],
-                        body=cur
+                        index=rec["es_index"],
+                        doc_type=rec["es_type"],
+                        id=rec["body"]["_id"],
+                        body=rec["body"]
                     )
