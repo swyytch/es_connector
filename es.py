@@ -67,7 +67,10 @@ def prepare(entry):
 
 def get_es_values(rec):
     if rec["db"] == "bernie":
-        name = [rec["col"], rec["body"]["lang"], VERSION]
+        try:
+            name = [rec["col"], rec["body"]["lang"], VERSION]
+        except KeyError:
+            name = [rec["col"], "en", VERSION]
         rec["es_index"] = "_".join(name)
         rec["es_type"] = rec["body"]["site"].replace(".", "_")
     elif rec["db"] == "facebook":
