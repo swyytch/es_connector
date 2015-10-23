@@ -73,6 +73,10 @@ def get_es_values(rec):
             name = [rec["col"], "en", VERSION]
         rec["es_index"] = "_".join(name)
         rec["es_type"] = rec["body"]["site"].replace(".", "_")
+    elif rec["db"] == "videos":
+        name = [rec["col"], VERSION]
+        rec["es_index"] = "_".join(name)
+        rec["es_type"] = rec["body"]["site"].replace(".", "_")
     elif rec["db"] == "facebook":
         if rec["col"] == "token":
             return False
