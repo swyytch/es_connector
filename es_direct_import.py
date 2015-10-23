@@ -5,6 +5,7 @@ import logging
 import sys
 import yaml
 
+from datetime import datetime
 from elasticsearch import Elasticsearch
 from pymongo import MongoClient
 from time import time
@@ -51,17 +52,18 @@ def prepare(rec, dbname, collection):
 
 
 def get_es_values(rec):
-    # if rec["db"] == "bernie":
-    #     name = [rec["col"], rec["body"]["lang"], VERSION]
-    #     rec["es_index"] = "_".join(name)
-    #     rec["es_type"] = rec["body"]["site"].replace(".", "_")
-    # elif rec["db"] == "facebook":
-    #     if rec["col"] == "token":
-    #         return False
-    #     name = ["fb", rec["body"]["page"], VERSION]
-    #     rec["es_index"] = "_".join(name)
-    #     rec["es_type"] = rec["col"] if rec["col"] != "data" else "stats"
-    if rec["db"] == "campaign":
+    if rec["db"] == "bernie":
+        print("found bernie")
+        name = [rec["col"], rec["body"]["lang"], VERSION]
+        rec["es_index"] = "_".join(name)
+        rec["es_type"] = rec["body"]["site"].replace(".", "_")
+    elif rec["db"] == "facebook":
+        if rec["col"] == "token":
+            return False
+        name = ["fb", rec["body"]["page"], VERSION]
+        rec["es_index"] = "_".join(name)
+        rec["es_type"] = rec["col"] if rec["col"] != "data" else "stats"
+    elif rec["db"] == "campaign":
         name = ["campaign_events", VERSION]
         rec["es_index"] = "_".join(name)
         rec["es_type"] = rec["col"]
@@ -75,19 +77,19 @@ if __name__ == '__main__':
     conf = config()["elasticsearch"]
     es = Elasticsearch(conf["host"])
     for dbname in ["bernie", "facebook"]:
+        print(dbname)
         for collection in db[dbname].collection_names():
+            print(collection)
             if collection in ["system.indexes"]:
                 continue
-            cursor = db[dbname][collection].find()
+            cursor = db[dbname][collection].find({"created_at": {"$gte": datetime(2015,10,05)}})
+            print(cursor.count())
             for doc in cursor:
+                print(doc)
                 rec = prepare(doc, dbname, collection)
-                if not rec:
-                    continue
+                print(rec)
                 rec = get_es_values(rec)
-                if not rec:
-                    continue
-                if rec["col"] == "events":
-                    continue
+                print(rec)
                 if "parent" in rec["body"]:
                     es.index(
                         index=rec["es_index"],
